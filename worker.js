@@ -1,3 +1,5 @@
+importScripts('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js');
+
 function rgbToHsl(r, g, b) {
     r /= 255;
     g /= 255;
@@ -7,7 +9,7 @@ function rgbToHsl(r, g, b) {
     let h, s, l = (max + min) / 2;
 
     if (max === min) {
-        h = s = 0; // серый
+        h = s = 0;
     } else {
         const d = max - min;
         s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
@@ -24,7 +26,7 @@ function rgbToHsl(r, g, b) {
         }
         h /= 6;
     }
-    return [h, s, l]; // все значения от 0 до 1
+    return [h, s, l];
 }
 
 function hslToRgb(h, s, l) {
@@ -49,22 +51,53 @@ function hslToRgb(h, s, l) {
     return [r * 255, g * 255, b * 255];
 }
 
-self.onmessage = (e) => {
+let model = null;
+
+async function loadModel() {
+    if (model) return model;
+    model = await tf.loadGraphModel('./model/model.json');
+    return model;
+}
+
+function resizeToTensor(data, srcWidth, srcHeight, targetSize = 96) {
+    const canvas = new OffscreenCanvas(targetSize, targetSize);
+    const ctx = canvas.getContext('2d');
+
+    const tmpCanvas = new OffscreenCanvas(srcWidth, srcHeight);
+    const tmpCtx = tmpCanvas.getContext('2d');
+    const imageData = new ImageData(new Uint8ClampedArray(data), srcWidth, srcHeight);
+    tmpCtx.putImageData(imageData, 0, 0);
+
+    ctx.drawImage(tmpCanvas, 0, 0, targetSize, targetSize);
+    const smallData = ctx.getImageData(0, 0, targetSize, targetSize).data;
+
+    const float32 = new Float32Array(targetSize * targetSize * 3);
+    for (let i = 0, j = 0; i < smallData.length; i += 4, j += 3) {
+        float32[j] = smallData[i] / 255;
+        float32[j + 1] = smallData[i + 1] / 255;
+        float32[j + 2] = smallData[i + 2] / 255;
+    }
+    return tf.tensor4d(float32, [1, targetSize, targetSize, 3]);
+}
+
+self.onmessage = async(e) => {
     const buffer = e.data.pixels;
     const width = e.data.width;
     const height = e.data.height;
 
     const data = new Uint8ClampedArray(buffer);
 
+    await loadModel();
+    const [brightness, contrast, saturation] = tf.tidy(() => {
+        const tensor = resizeToTensor(data, width, height);
+        return model.predict(tensor).dataSync();
+    });
+
     /*
     brightness: от -0.4 до +0.4
     contrast:   от 0.7 до 1.5
     saturation: от 0.7 до 1.5
     */
-
-    const brightness = 0.2;
-    const contrast = 1.0;
-    const saturation = 1.0;
 
     for (let i = 0; i < data.length; i += 4) {
 
