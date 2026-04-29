@@ -28,56 +28,117 @@ downloadButton.textContent = 'Скачать';
 downloadButton.disabled = true;
 document.body.appendChild(downloadButton);
 
+const ImageEnhancer = new(class extends EventTarget {
+    constructor() {
+        super();
+        this.tasks = new Map();
+    }
 
+    submit(file) {
+        const taskId = crypto.randomUUID();
+        this.tasks.set(taskId, { status: 'pending', progress: 0, result: null });
+        this._process(taskId, file);
+        return taskId;
+    }
+
+    getStatus(taskId) {
+        const task = this.tasks.get(taskId);
+        return { status: task.status, progress: task.progress };
+    }
+
+    cancel(taskId) {
+        const task = this.tasks.get(taskId);
+        if (!task || task.status === 'done') return false;
+        this._updateTask(taskId, 'cancelled', task.progress);
+        return true;
+    }
+
+    getResult(taskId) {
+        return this.tasks.get(taskId).result;
+    }
+
+    _updateTask(taskId, status, progress) {
+        const task = this.tasks.get(taskId);
+        task.status = status;
+        task.progress = progress;
+        this.dispatchEvent(new CustomEvent('statusChange', {
+            detail: { taskId, status, progress }
+        }));
+    }
+
+    _process(taskId, file) {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.src = url;
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+
+            this._updateTask(taskId, 'processing', 0);
+
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const buffer = imageData.data.buffer;
+            worker.postMessage({ pixels: buffer, width: img.width, height: img.height }, [buffer]);
+
+            worker.onmessage = (e) => {
+                if (this.tasks.get(taskId).status === 'cancelled') return;
+
+                if (e.data.type === 'progress') {
+                    this._updateTask(taskId, 'processing', e.data.progress);
+                }
+                if (e.data.type === 'done') {
+                    const pixels = new Uint8ClampedArray(e.data.pixels);
+                    const newImageData = new ImageData(pixels, canvas.width, canvas.height);
+                    ctx.putImageData(newImageData, 0, 0);
+                    this.tasks.get(taskId).result = canvas;
+                    this._updateTask(taskId, 'done', 100);
+                }
+                if (e.data.type === 'error') {
+                    this._updateTask(taskId, 'error', 0);
+                }
+            };
+        };
+    }
+})();
 
 input.onchange = (e) => {
     progressBar.value = 0;
     const file = e.target.files[0];
-    const url = URL.createObjectURL(file);
+    downloadButton.disabled = true;
+    const taskId = ImageEnhancer.submit(file);
 
-    const img = new Image();
-    img.src = url;
-    img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
+    const onStatusChange = (e) => {
+        if (e.detail.taskId !== taskId) return;
+        progressBar.value = e.detail.progress;
 
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
+        if (e.detail.status === 'done') {
+            const canvas = ImageEnhancer.getResult(taskId);
+            document.body.appendChild(canvas);
+            downloadButton.disabled = false;
+            downloadButton.onclick = () => {
+                const format = formatSelect.value;
+                const extension = format.split('/')[1];
+                canvas.toBlob((blob) => {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `result.${extension}`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                }, format);
+            };
+            ImageEnhancer.removeEventListener('statusChange', onStatusChange);
+        }
 
-        console.log(`Размер: ${img.width}×${img.height}, пикселей: ${img.width * img.height / 1000000} Мпк`);
-
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const buffer = imageData.data.buffer;
-        worker.postMessage({ pixels: buffer, width: img.width, height: img.height }, [buffer]);
-        worker.onmessage = (e) => {
-            if (e.data.type === 'progress') {
-                progressBar.value = e.data.progress;
-            }
-            if (e.data.type === 'done') {
-                progressBar.value = 100;
-                const pixels = new Uint8ClampedArray(e.data.pixels);
-                const newImageData = new ImageData(pixels, canvas.width, canvas.height);
-                ctx.putImageData(newImageData, 0, 0);
-                document.body.appendChild(canvas);
-                console.log('Готово!');
-
-                downloadButton.disabled = false;
-
-                downloadButton.onclick = () => {
-                    const format = formatSelect.value;
-                    const extension = format.split('/')[1];
-
-                    canvas.toBlob((blob) => {
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `result.${extension}`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                    }, format);
-                };
-            }
-        };
+        if (e.detail.status === 'error') {
+            alert('Ошибка обработки');
+            ImageEnhancer.removeEventListener('statusChange', onStatusChange);
+        }
     };
+
+    ImageEnhancer.addEventListener('statusChange', onStatusChange);
+
 };
