@@ -88,10 +88,15 @@ self.onmessage = async(e) => {
     const data = new Uint8ClampedArray(buffer);
 
     await loadModel();
+
+    self.postMessage({ type: 'progress', progress: 5 });
+
     const [brightness, contrast, saturation] = tf.tidy(() => {
         const tensor = resizeToTensor(data, width, height);
         return model.predict(tensor).dataSync();
     });
+
+    self.postMessage({ type: 'progress', progress: 15 });
 
     /*
     brightness: от -0.4 до +0.4
@@ -116,7 +121,7 @@ self.onmessage = async(e) => {
         if (i % Math.round(data.length / 20) === 0) {
             self.postMessage({
                 type: 'progress',
-                progress: Math.round(i / data.length * 100)
+                progress: 15 + Math.round((i / data.length) * 85)
             });
         }
     }
