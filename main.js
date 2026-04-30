@@ -1,5 +1,3 @@
-const worker = new Worker('worker.js');
-
 const input = document.createElement('input');
 input.type = 'file';
 input.accept = 'image/*';
@@ -61,7 +59,12 @@ const ImageEnhancer = new(class extends EventTarget {
 
     submit(file) {
         const taskId = crypto.randomUUID();
-        this.tasks.set(taskId, { status: 'pending', progress: 0, result: null });
+        this.tasks.set(taskId, {
+            status: 'pending',
+            progress: 0,
+            result: null,
+            worker: new Worker('worker.js')
+        });
         this._process(taskId, file);
         return taskId;
     }
@@ -75,6 +78,7 @@ const ImageEnhancer = new(class extends EventTarget {
         const task = this.tasks.get(taskId);
         if (!task || task.status === 'done') return false;
         this._updateTask(taskId, 'cancelled', task.progress);
+        task.worker.terminate();
         return true;
     }
 
@@ -92,6 +96,7 @@ const ImageEnhancer = new(class extends EventTarget {
     }
 
     async _process(taskId, file) {
+        const task = this.tasks.get(taskId);
         const isHeic = file.type === 'image/heic' || file.name.toLowerCase().endsWith('.heic');
         const blob = isHeic ? await heic2any({ blob: file, toType: 'image/png' }) : file;
         const url = URL.createObjectURL(blob);
@@ -108,10 +113,10 @@ const ImageEnhancer = new(class extends EventTarget {
 
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const buffer = imageData.data.buffer;
-            worker.postMessage({ pixels: buffer, width: img.width, height: img.height }, [buffer]);
+            task.worker.postMessage({ pixels: buffer, width: img.width, height: img.height }, [buffer]);
 
-            worker.onmessage = (e) => {
-                if (this.tasks.get(taskId).status === 'cancelled') return;
+            task.worker.onmessage = (e) => {
+                if (task.status === 'cancelled') return;
 
                 if (e.data.type === 'progress') {
                     this._updateTask(taskId, 'processing', e.data.progress);
