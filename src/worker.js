@@ -55,7 +55,7 @@ let model = null;
 
 async function loadModel() {
     if (model) return model;
-    model = await tf.loadGraphModel('./model/model.json');
+    model = await tf.loadGraphModel('../model/model.json');
     return model;
 }
 
