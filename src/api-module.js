@@ -10,7 +10,7 @@ export const ImageEnhancer = new(class extends EventTarget {
             status: 'pending',
             progress: 0,
             result: null,
-            worker: new Worker('./src/worker.js')
+            worker: new Worker('./src/workers/ImageWorker.js')
         });
         this._process(taskId, file);
         return taskId;
@@ -53,7 +53,7 @@ export const ImageEnhancer = new(class extends EventTarget {
             const canvas = document.createElement('canvas');
             canvas.width = img.width;
             canvas.height = img.height;
-            const ctx = canvas.getContext('2d');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
             ctx.drawImage(img, 0, 0);
 
             this._updateTask(taskId, 'processing', 0);

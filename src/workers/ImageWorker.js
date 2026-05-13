@@ -55,16 +55,16 @@ let model = null;
 
 async function loadModel() {
     if (model) return model;
-    model = await tf.loadGraphModel('../model/model.json');
+    model = await tf.loadGraphModel('../../model/model.json');
     return model;
 }
 
 function resizeToTensor(data, srcWidth, srcHeight, targetSize = 96) {
     const canvas = new OffscreenCanvas(targetSize, targetSize);
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
     const tmpCanvas = new OffscreenCanvas(srcWidth, srcHeight);
-    const tmpCtx = tmpCanvas.getContext('2d');
+    const tmpCtx = tmpCanvas.getContext('2d', { willReadFrequently: true });
     const imageData = new ImageData(new Uint8ClampedArray(data), srcWidth, srcHeight);
     tmpCtx.putImageData(imageData, 0, 0);
 

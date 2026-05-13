@@ -1,4 +1,6 @@
 import { ImageEnhancer } from './api-module.js';
+import { canvasToBmpBlob } from './utils/bmp.js';
+import { canvasToHeicBlob } from './utils/heic.js';
 
 const input = document.createElement('input');
 input.type = 'file';
@@ -83,20 +85,26 @@ input.onchange = (e) => {
             progressBar.style.display = 'none';
 
             downloadButton.disabled = false;
-            downloadButton.onclick = () => {
+            downloadButton.onclick = async() => {
                 const format = formatSelect.value;
                 const extension = format.split('/')[1];
 
                 if (format === 'image/heic') {
-                    canvas.toBlob(async(pngBlob) => {
-                        const heicBlob = await heic2any({ blob: pngBlob, toType: 'image/heic' });
-                        const url = URL.createObjectURL(heicBlob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = 'result.heic';
-                        a.click();
-                        URL.revokeObjectURL(url);
-                    }, 'image/png');
+                    const heicBlob = await canvasToHeicBlob(canvas);
+                    const url = URL.createObjectURL(heicBlob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'result.heic';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                } else if (format === 'image/bmp') {
+                    const bmpBlob = canvasToBmpBlob(canvas);
+                    const url = URL.createObjectURL(bmpBlob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'result.bmp';
+                    a.click();
+                    URL.revokeObjectURL(url);
                 } else {
                     canvas.toBlob((blob) => {
                         const url = URL.createObjectURL(blob);
